@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#101523" />
+<meta name="description" content="AI 3D Game Studio — 3D-Spiele bauen, spielen und remixen, mit KI." />
+<title>AI 3D Game Studio</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◈</text></svg>" />
+<link rel="apple-touch-icon" href="/icon.svg" />
+<link rel="manifest" href="/manifest.webmanifest" />
+  <script type="module" crossorigin src="/assets/index-wxvV7Syi.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BYIlEGej.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">◈</span><div><strong>AI 3D Game Studio</strong><small data-i18n="brand_sub">bauen · spielen · remixen — Three.js + KI</small></div></div>
+  <div class="top-actions">
+    <button id="btn-play" class="primary" data-i18n="play">▶ Spielen</button>
+    <button id="btn-stop" disabled data-i18n="stop">■ Stop</button>
+    <span class="sep"></span>
+    <button id="btn-undo" data-i18n="undo" title="Strg+Z">↩ Rückgängig</button>
+    <button id="btn-redo" data-i18n="redo" title="Strg+Y">↪ Wiederholen</button>
+    <span class="sep"></span>
+    <button id="btn-save" data-i18n="save" title="Szene in Browser speichern">💾 Speichern</button>
+    <button id="btn-export" data-i18n="export" title="Szene als JSON exportieren">⤓ Export</button>
+    <button id="btn-import" data-i18n="import" title="Szene importieren">⤒ Import</button>
+    <input type="file" id="file-import" accept="application/json" hidden />
+    <input type="file" id="file-glb" accept=".glb,.gltf" hidden />
+    <button id="btn-glb" title="GLB-Modell laden (z. B. Sketchfab)">📦 GLB</button>
+    <span class="sep"></span>
+    <button id="btn-sound" title="Sound an/aus">🔊</button>
+    <button id="btn-lang" title="Sprache / Language">EN</button>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="left">
+    <section class="panel">
+      <h2><span data-i18n="scene">Szene</span> <span id="obj-count" class="badge">0</span></h2>
+      <div id="scene-title" class="scene-title" title="Szenen-Name">demo</div>
+      <div id="hierarchy" class="hierarchy"></div>
+      <div class="row">
+        <button id="btn-clear" data-i18n="clear">Szene leeren</button>
+        <button id="btn-demo" data-i18n="demo">Demo laden</button>
+      </div>
+    </section>
+    <section class="panel">
+      <h2 data-i18n="library">Bibliothek</h2>
+      <div id="library" class="templates"></div>
+    </section>
+    <section class="panel">
+      <h2 data-i18n="add">Hinzufügen</h2>
+      <div class="grid2">
+        <button data-add="box" data-i18n="add_box">🧊 Würfel</button>
+        <button data-add="sphere" data-i18n="add_sphere">🔮 Kugel</button>
+        <button data-add="capsule" data-i18n="add_capsule">💊 Kapsel</button>
+        <button data-add="cylinder" data-i18n="add_cylinder">🛢️ Säule</button>
+        <button data-add="ramp" data-i18n="add_ramp">📐 Rampe</button>
+        <button data-add="stairs" data-i18n="add_stairs">🪜 Treppe</button>
+        <button data-add="bridge" data-i18n="add_bridge">🌉 Brücke</button>
+        <button data-add="arch" data-i18n="add_arch">⛩️ Bogen</button>
+        <button data-add="house" data-i18n="add_house">🏠 Haus</button>
+        <button data-add="cone" data-i18n="add_cone">🔺 Kegel</button>
+        <button data-add="torus" data-i18n="add_torus">⭕ Ring</button>
+        <button data-add="cloud" data-i18n="add_cloud">☁️ Wolke</button>
+        <button data-add="water" data-i18n="add_water">🌊 Wasser</button>
+        <button data-add="platform" data-i18n="add_platform">🛟 Plattform</button>
+        <button data-add="spring" data-i18n="add_spring">🌀 Feder</button>
+        <button data-add="spikes" data-i18n="add_spikes">🦔 Stacheln</button>
+        <button data-add="lava" data-i18n="add_lava">🌋 Lava</button>
+        <button data-add="heart" data-i18n="add_heart">❤️ Herz</button>
+        <button data-add="ground" data-i18n="add_ground">🟩 Boden</button>
+        <button data-add="coin" data-i18n="add_coin">🪙 Münze</button>
+        <button data-add="enemy" data-i18n="add_enemy">👾 Gegner</button>
+        <button data-add="flyer" data-i18n="add_flyer">🐝 Flieger</button>
+        <button data-add="goal" data-i18n="add_goal">🏁 Ziel</button>
+        <button data-add="light" data-i18n="add_light">💡 Licht</button>
+        <button data-add="player" data-i18n="add_player">🧑 Spawn</button>
+        <button data-add="tree" data-i18n="add_tree">🌲 Deko</button>
+      </div>
+    </section>
+    <section class="panel">
+      <h2 data-i18n="tools">Werkzeug</h2>
+      <div class="row">
+        <button data-tool="translate" class="tool active" data-i18n="tool_move">Verschieben</button>
+        <button data-tool="rotate" class="tool" data-i18n="tool_rotate">Rotieren</button>
+        <button data-tool="scale" class="tool" data-i18n="tool_scale">Skalieren</button>
+      </div>
+      <label class="check"><input type="checkbox" id="chk-grid" checked /> <span data-i18n="grid">Raster + Schatten</span></label>
+      <label class="check"><input type="checkbox" id="chk-snap" checked /> <span data-i18n="snap">Einrasten (0.5 / 15°)</span></label>
+      <label class="check"><input type="checkbox" id="chk-coop" /> <span data-i18n="coop">👥 2-Spieler Co-op (P2: Pfeiltasten + Enter)</span></label>
+      <label><span data-i18n="quality">Qualität</span>
+        <select id="sel-quality">
+          <option value="auto" data-i18n="q_auto">Auto</option>
+          <option value="high" data-i18n="q_high">Hoch</option>
+          <option value="low" data-i18n="q_low">Niedrig</option>
+        </select>
+      </label>
+    </section>
+  </aside>
+
+  <section class="viewport-wrap">
+    <div id="viewport"></div>
+    <div class="vp-toolbar">
+      <span id="mode-badge" class="mode">EDIT</span>
+      <span id="hud" class="hud">Punkte 0 · Leben 3 · Zeit 0:00</span>
+      <span id="renderer-badge" class="renderbadge">…</span>
+    </div>
+    <div id="toast" class="toast hidden"></div>
+    <div id="overlay" class="overlay hidden">
+      <div class="card"><h3 id="overlay-title">Gewonnen!</h3><p id="overlay-text"></p>
+      <button id="btn-again" data-i18n="again">Nochmal spielen</button></div>
+    </div>
+    <div id="touch-ui" class="touch-ui hidden">
+      <div id="stick" class="stick"><div id="stick-knob" class="stick-knob"></div></div>
+      <div class="touch-btns">
+        <button id="tbtn-shoot" data-i18n="touch_shoot">◎</button>
+        <button id="tbtn-jump" data-i18n="touch_jump">⤒</button>
+      </div>
+    </div>
+    <div id="help" class="help" data-i18n-html="help">Klick = wählen · Doppelklick = fokussieren · Im Spiel: <b>WASD + Leertaste</b>, Klick = Schießen</div>
+  </section>
+
+  <aside class="right">
+    <div class="tabs">
+      <button data-tab="ai" class="active" data-i18n="tab_ai">✨ KI-Studio</button>
+      <button data-tab="inspector" data-i18n="tab_insp">🔧 Inspektor</button>
+      <button data-tab="code" data-i18n="tab_code">🧩 Code</button>
+    </div>
+
+    <section id="tab-ai" class="panel tabpage">
+      <p class="hint" data-i18n="ai_hint">Beschreibe dein Spiel. Die lokale KI baut sofort eine spielbare 3D-Szene. Optional nutzt du ein kostenloses Online-Modell (OpenCode Zen).</p>
+      <textarea id="ai-prompt" rows="4" data-i18n-ph="ai_ph" placeholder="z. B. ein Münz-Sammler im Park mit 8 Münzen und 2 Gegnern …">Ein Münz-Sammler im Park: 8 Münzen, 2 Gegner, Zieltor</textarea>
+      <div class="row">
+        <select id="ai-mode" title="KI-Modus">
+          <option value="local" data-i18n="ai_local">⚡ Lokal (sofort, offline)</option>
+          <option value="zen" data-i18n="ai_zen">🌐 Zen-API (online, kostenlos)</option>
+        </select>
+        <button id="btn-ai" class="primary" data-i18n="ai_generate">✨ Spiel generieren</button>
+      </div>
+      <div class="row">
+        <select id="zen-model"><option value="mimo-v2.5-free">mimo-v2.5-free</option><option value="deepseek-v4-flash-free">deepseek-v4-flash-free</option><option value="muse-spark-1.2-contributor-free">muse-spark-1.2-contributor-free</option></select>
+        <button id="btn-zen-refresh" title="Modelle neu laden">↻</button>
+      </div>
+      <div id="ai-status" class="status">Bereit.</div>
+      <div id="best-line" class="best hidden"></div>
+      <h3 data-i18n="ai_templates">Vorlagen</h3>
+      <div id="templates" class="templates"></div>
+    </section>
+
+    <section id="tab-inspector" class="panel tabpage hidden">
+      <h3 data-i18n="insp_title">Objekt</h3>
+      <div id="insp-empty" class="hint" data-i18n="insp_empty">Nichts gewählt. Klicke ein Objekt in der Szene oder in der Liste.</div>
+      <div id="insp-body" class="hidden">
+        <label><span data-i18n="name">Name</span><input id="insp-name" /></label>
+        <label><span data-i18n="type">Typ</span>
+          <select id="insp-type">
+            <option value="static" data-i18n="t_static">Statisch (Wand/Boden)</option>
+            <option value="platform" data-i18n="t_platform">Plattform (beweglich)</option>
+            <option value="hazard" data-i18n="t_hazard">Falle (Schaden)</option>
+            <option value="spring" data-i18n="t_spring">Sprungfeder</option>
+            <option value="powerup" data-i18n="t_powerup">Power-up (Leben)</option>
+            <option value="player" data-i18n="t_player">Spieler-Spawn</option>
+            <option value="collectible" data-i18n="t_collectible">Sammelbar (Münze)</option>
+            <option value="enemy" data-i18n="t_enemy">Gegner</option>
+            <option value="goal" data-i18n="t_goal">Ziel</option>
+            <option value="decoration" data-i18n="t_decoration">Deko</option>
+          </select>
+        </label>
+        <label id="insp-behavior-wrap"><span data-i18n="behavior">Verhalten</span>
+          <select id="insp-behavior">
+            <option value="patrol" data-i18n="b_patrol">Patrouille</option>
+            <option value="chase" data-i18n="b_chase">Verfolgen</option>
+            <option value="fly" data-i18n="b_fly">Fliegen</option>
+          </select>
+        </label>
+        <div class="vec"><span data-i18n="pos">Position</span><input id="insp-px" type="number" step="0.5" /><input id="insp-py" type="number" step="0.5" /><input id="insp-pz" type="number" step="0.5" /></div>
+        <div class="vec"><span data-i18n="scale">Skalierung</span><input id="insp-sx" type="number" step="0.1" /><input id="insp-sy" type="number" step="0.1" /><input id="insp-sz" type="number" step="0.1" /></div>
+        <label><span data-i18n="color">Farbe</span><input id="insp-color" type="color" /></label>
+        <div class="row">
+          <button id="btn-dup" data-i18n="dup">Duplizieren</button>
+          <button id="btn-focus" data-i18n="focus">Fokussieren</button>
+          <button id="btn-del" class="danger" data-i18n="del">Löschen</button>
+        </div>
+      </div>
+      <h3 data-i18n="env">Umgebung</h3>
+      <label><span data-i18n="sky">Himmel</span><select id="env-sky">
+        <option value="day" data-i18n="sky_day">Tag</option>
+        <option value="sunset" data-i18n="sky_sunset">Sonnenuntergang</option>
+        <option value="night" data-i18n="sky_night">Nacht / Space</option>
+        <option value="desert" data-i18n="sky_desert">Wüste</option>
+        <option value="snow" data-i18n="sky_snow">Schnee</option>
+        <option value="volcano" data-i18n="sky_volcano">Vulkan</option>
+      </select></label>
+    </section>
+
+    <section id="tab-code" class="panel tabpage hidden">
+      <p class="hint" data-i18n="code_hint">Eigene Spiellogik (JS). Verfügbar: api mit score, lives, win(msg), lose(msg), spawnFX(pos), objects, player. Beispiel: Zeitlimit 90s.</p>
+      <textarea id="code-editor" rows="14" spellcheck="false"></textarea>
+      <div class="row"><button id="btn-code-run" class="primary" data-i18n="code_run">▶ Code + Spielen</button><button id="btn-code-reset" data-i18n="code_reset">Standard-Code</button></div>
+    </section>
+  </aside>
+</main>
+
+<footer class="console"><span data-i18n="console">Konsole:</span><span id="log"></span></footer>
+</body>
+</html>

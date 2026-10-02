@@ -1,0 +1,14 @@
+{
+  "name": "AI 3D Game Studio",
+  "short_name": "GameStudio",
+  "description": "3D-Spiele bauen, spielen und remixen — mit KI.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0c0f16",
+  "theme_color": "#101523",
+  "lang": "de",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

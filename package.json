@@ -1,0 +1,28 @@
+{
+  "name": "ai-game-studio",
+  "version": "1.0.0",
+  "description": "<!-- omgithub:readme:start --> ## 🚀 Build, play, and remix with OMGithub",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 3002 --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --port 3002"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jodaaisupport-commits/ai-game-studio.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jodaaisupport-commits/ai-game-studio/issues"
+  },
+  "homepage": "https://github.com/jodaaisupport-commits/ai-game-studio#readme",
+  "dependencies": {
+    "@types/three": "^0.186.0",
+    "three": "^0.186.1",
+    "vite": "^8.3.2"
+  }
+}
