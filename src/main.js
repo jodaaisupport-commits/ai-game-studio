@@ -229,16 +229,33 @@ studio.onToast = msg => {
 // ---------- Play ----------
 $('btn-play').addEventListener('click', () => {
   studio.userCode = $('code-editor').value
+  document.body.classList.remove('menu-open')
   setupTutorial(studio.tutorialScene)
   if (studio.play()) {
     $('btn-play').disabled = true; $('btn-stop').disabled = false
-    if (studio.isTouch) $('touch-ui').classList.remove('hidden')
+    $('btn-pause').classList.remove('hidden')
+    $('btn-pause').textContent = '⏸'
+    if (studio.isTouch) {
+      $('touch-ui').classList.remove('hidden')
+      // Hinweise für Touch-Erstspieler (nicht im geführten Tutorial)
+      if (!studio.tutorialScene && !localStorage.getItem('ai-studio-touchseen')) {
+        localStorage.setItem('ai-studio-touchseen', '1')
+        studio.toast(t('touch_first'))
+        setTimeout(() => { if (studio.playing && !studio.tutorialCheck) studio.toast(null) }, 7000)
+      } else if (!studio.tutorialScene && innerHeight > innerWidth && !sessionStorage.getItem('ai-studio-portrait')) {
+        sessionStorage.setItem('ai-studio-portrait', '1')
+        studio.toast(t('portrait'))
+        setTimeout(() => { if (studio.playing && !studio.tutorialCheck) studio.toast(null) }, 5000)
+      }
+    }
   }
 })
+$('btn-pause').addEventListener('click', () => { studio.togglePause(); sound.click() })
 function stopPlay() {
   studio.stop(); studio.tutorialCheck = null
   studio.resetView()
   $('btn-play').disabled = false; $('btn-stop').disabled = true
+  $('btn-pause').classList.add('hidden')
   $('touch-ui').classList.add('hidden')
   refreshHierarchy(); refreshInspector()
 }
@@ -306,42 +323,112 @@ $('file-glb').addEventListener('change', async e => {
 })
 $('btn-clear').addEventListener('click', () => studio.clear())
 
-// ---------- Touch-Steuerung ----------
+// ---------- Touch-Steuerung (schwebender Joystick + Kamera-Zonen + Pinch) ----------
 function setupTouch() {
-  const stick = $('stick'), knob = $('stick-knob')
+  const zone = $('stick-zone'), stick = $('stick'), knob = $('stick-knob')
+  const R = 44
   let active = null, cx = 0, cy = 0
-  const R = 40
-  stick.addEventListener('pointerdown', e => { active = e.pointerId; stick.setPointerCapture(active); const r = stick.getBoundingClientRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2; e.preventDefault() })
-  stick.addEventListener('pointermove', e => {
+  const setKnob = (dx, dy) => { knob.style.left = (34 + dx) + 'px'; knob.style.top = (34 + dy) + 'px' }
+  zone.addEventListener('pointerdown', e => {
+    if (!studio.playing || active !== null) return
+    active = e.pointerId
+    try { zone.setPointerCapture(active) } catch { /* ignore */ }
+    // Stick erscheint am Daumen (relativ zum Viewport-Wrap positioniert)
+    const wrap = zone.getBoundingClientRect()
+    cx = e.clientX; cy = e.clientY
+    stick.style.left = (e.clientX - wrap.left - 60) + 'px'
+    stick.style.top = (e.clientY - wrap.top - 60) + 'px'
+    stick.style.bottom = 'auto'
+    setKnob(0, 0)
+    studio.touch.x = 0; studio.touch.y = 0
+    e.preventDefault()
+  })
+  zone.addEventListener('pointermove', e => {
     if (e.pointerId !== active) return
     let dx = e.clientX - cx, dy = e.clientY - cy
     const len = Math.hypot(dx, dy) || 1, cl = Math.min(len, R)
     dx = dx / len * cl; dy = dy / len * cl
-    knob.style.left = (34 + dx) + 'px'; knob.style.top = (34 + dy) + 'px'
+    setKnob(dx, dy)
     studio.touch.x = dx / R; studio.touch.y = -dy / R
   })
   const end = e => {
     if (e.pointerId !== active) return
     active = null; studio.touch.x = 0; studio.touch.y = 0
-    knob.style.left = '34px'; knob.style.top = '34px'
+    setKnob(0, 0)
   }
-  stick.addEventListener('pointerup', end); stick.addEventListener('pointercancel', end)
-  $('tbtn-jump').addEventListener('pointerdown', e => { e.preventDefault(); studio.touch.jump = true })
+  zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end)
+  $('tbtn-jump').addEventListener('pointerdown', e => { e.preventDefault(); studio.touch.jump = true; studio.buzz(5) })
   $('tbtn-shoot').addEventListener('pointerdown', e => { e.preventDefault(); studio.shoot(studio.avatar) })
-  // Wischen auf dem Viewport dreht die Kamera (Ein-Finger, wenn kein Joystick)
-  let lx = 0, ly = 0, swiping = false
+  // Kamera: rechte Bildschirmhälfte wischen, Zwei-Finger-Pinch = Zoom
+  let lx = 0, ly = 0, swiping = false, pinchD = 0
   const cv = studio.renderer.domElement
-  cv.addEventListener('touchstart', e => { if (e.touches.length === 1 && studio.playing) { lx = e.touches[0].clientX; ly = e.touches[0].clientY; swiping = true } }, { passive: true })
+  cv.addEventListener('touchstart', e => {
+    if (!studio.playing) return
+    if (e.touches.length === 2) {
+      swiping = false
+      pinchD = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY)
+      e.preventDefault()
+    } else if (e.touches.length === 1 && e.touches[0].clientX > innerWidth * 0.45) {
+      lx = e.touches[0].clientX; ly = e.touches[0].clientY; swiping = true
+    }
+  }, { passive: false })
   cv.addEventListener('touchmove', e => {
-    if (!swiping || !studio.playing) return
+    if (!studio.playing) return
+    if (e.touches.length === 2) {
+      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY)
+      if (pinchD > 0) studio.setCamDist(studio.camDist - (d - pinchD) * 0.02)
+      pinchD = d
+      e.preventDefault()
+      return
+    }
+    if (!swiping || e.touches.length !== 1) return
     const tch = e.touches[0]
-    studio.yaw -= (tch.clientX - lx) * 0.008
-    studio.pitch = Math.max(-0.2, Math.min(1.2, studio.pitch + (tch.clientY - ly) * 0.006))
+    studio.yaw -= (tch.clientX - lx) * 0.008 * studio.camSpeed
+    studio.pitch = Math.max(-0.2, Math.min(1.2, studio.pitch + (tch.clientY - ly) * 0.006 * studio.camSpeed))
     lx = tch.clientX; ly = tch.clientY
-  }, { passive: true })
-  cv.addEventListener('touchend', () => { swiping = false })
+    e.preventDefault()
+  }, { passive: false })
+  cv.addEventListener('touchend', e => { if (e.touches.length < 2) pinchD = 0; if (e.touches.length === 0) swiping = false })
 }
 setupTouch()
+
+// ---------- Menü (mobil) + Kamera-Tempo + einklappbare Panels ----------
+$('btn-menu').addEventListener('click', () => { document.body.classList.toggle('menu-open'); sound.click() })
+document.addEventListener('click', e => {
+  if (document.body.classList.contains('menu-open') && !e.target.closest('.top-actions')) document.body.classList.remove('menu-open')
+})
+$('top-more').addEventListener('click', e => { if (e.target.closest('button')) document.body.classList.remove('menu-open') })
+const camRange = $('rng-cam')
+camRange.value = String(studio.camSpeed)
+camRange.addEventListener('input', e => studio.setCamSpeed(e.target.value))
+function setupCollapsible() {
+  const mobile = matchMedia('(max-width: 920px)').matches
+  document.querySelectorAll('.left .panel').forEach((p, i) => {
+    if (i === 0) return
+    if (!mobile) { p.classList.remove('collapsible', 'collapsed'); return }
+    if (p.classList.contains('collapsible')) return
+    p.classList.add('collapsible', 'collapsed')
+    p.querySelector('h2')?.addEventListener('click', () => p.classList.toggle('collapsed'))
+  })
+}
+setupCollapsible()
+matchMedia('(max-width: 920px)').addEventListener?.('change', setupCollapsible)
+
+// ---------- PWA-Install ----------
+let deferredPrompt = null
+addEventListener('beforeinstallprompt', e => {
+  e.preventDefault()
+  deferredPrompt = e
+  $('btn-install').classList.remove('hidden')
+})
+$('btn-install').addEventListener('click', async () => {
+  if (!deferredPrompt) return
+  deferredPrompt.prompt()
+  await deferredPrompt.userChoice.catch(() => {})
+  deferredPrompt = null
+  $('btn-install').classList.add('hidden')
+})
+if (matchMedia('(display-mode: standalone)').matches) $('btn-install').classList.add('hidden')
 
 // ---------- KI ----------
 async function refreshZenModels() {

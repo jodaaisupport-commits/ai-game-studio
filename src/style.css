@@ -49,37 +49,66 @@ code{background:#0008;padding:1px 5px;border-radius:5px}
 .toast{position:absolute;top:52px;left:50%;transform:translateX(-50%);background:#101a33f0;border:1px solid var(--acc);border-radius:10px;padding:8px 16px;font-weight:600;pointer-events:none;max-width:90%;text-align:center;z-index:5}
 .toast.hidden{display:none!important}
 
-/* ---- Touch-Steuerung ---- */
-.touch-ui{position:absolute;inset:auto 0 0 0;display:flex;justify-content:space-between;align-items:flex-end;padding:0 18px 54px;pointer-events:none;z-index:4}
+/* ---- Touch-Steuerung (Joystick schwebt, Zone links) ---- */
+.touch-ui{position:absolute;inset:0;pointer-events:none;z-index:4}
 .touch-ui.hidden{display:none!important}
-.stick{width:120px;height:120px;border-radius:50%;background:#ffffff14;border:2px solid #ffffff44;pointer-events:auto;position:relative;touch-action:none}
+.stick-zone{position:absolute;left:0;bottom:0;width:45%;height:65%;pointer-events:auto;touch-action:none}
+.stick{width:120px;height:120px;border-radius:50%;background:#ffffff14;border:2px solid #ffffff44;pointer-events:none;position:absolute;left:24px;bottom:70px;touch-action:none}
 .stick-knob{width:52px;height:52px;border-radius:50%;background:#7c5cffcc;border:2px solid #fff8;position:absolute;left:34px;top:34px}
-.touch-btns{display:flex;gap:12px;pointer-events:auto}
-.touch-btns button{width:68px;height:68px;border-radius:50%;font-size:26px;background:#1e2740ee;border:2px solid var(--acc);touch-action:none;-webkit-user-select:none;user-select:none}
+.touch-btns{display:flex;gap:12px;pointer-events:auto;position:absolute;right:calc(18px + env(safe-area-inset-right, 0px));bottom:calc(54px + env(safe-area-inset-bottom, 0px))}
+.touch-btns button{width:68px;height:68px;border-radius:50%;font-size:26px;background:#1e2740ee;border:2px solid var(--acc);touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .touch-btns button:active{background:var(--acc)}
+.hud-btn{pointer-events:auto;background:#000a;border:1px solid var(--line);border-radius:20px;padding:4px 12px;font-size:15px;min-height:0}
+.hud-btn.active{background:var(--acc)}
 
 /* ---- Bestleistung ---- */
 .best{margin-top:8px;font-size:12px;color:var(--warn);background:#221a08;border:1px solid #6b4d16;border-radius:8px;padding:6px 10px}
 .best.hidden{display:none!important}
 
 /* ---- Mobile Layout ---- */
+#btn-menu{display:none}
+.top-actions .more{display:contents}
 @media(max-width:920px){
+  html,body{overscroll-behavior:none}
   .layout{display:flex;flex-direction:column;overflow:auto}
   .left{order:2;overflow:visible}
   .right{order:3;overflow:visible;flex-direction:column}
   .viewport-wrap{order:1;flex:none;height:52vh;min-height:320px;position:sticky;top:0;z-index:3}
   body{overflow:auto}
   main.layout{overflow:visible}
-  .topbar{flex-wrap:wrap;gap:8px;padding:8px}
-  .top-actions{flex-wrap:wrap}
+  .topbar{flex-wrap:nowrap;gap:8px;padding:8px calc(8px + env(safe-area-inset-right, 0px)) 8px calc(8px + env(safe-area-inset-left, 0px));padding-top:calc(8px + env(safe-area-inset-top, 0px))}
+  .brand small{display:none}
+  #btn-menu{display:block;font-size:18px}
+  .top-actions{flex-wrap:nowrap;position:relative}
+  .top-actions .more{display:none}
+  body.menu-open .top-actions .more{display:flex;position:absolute;top:calc(100% + 8px);right:0;z-index:20;flex-direction:column;align-items:stretch;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;gap:6px;min-width:220px;box-shadow:0 12px 32px #000a}
+  body.menu-open .top-actions .more .sep{display:none}
+  body.menu-open .top-actions .more button{text-align:left}
   .help{display:none}
   .renderbadge{display:none}
   .templates{grid-template-columns:1fr 1fr}
   .left .hierarchy{max-height:150px}
+  .vp-toolbar{left:10px;right:10px;top:calc(10px + env(safe-area-inset-top, 0px))}
+  .hud{font-size:13px}
+  /* Einklappbare Panels */
+  .left .panel.collapsible>h2{cursor:pointer}
+  .left .panel.collapsible>h2::after{content:' ▾';color:var(--acc)}
+  .left .panel.collapsible.collapsed>h2::after{content:' ▸'}
+  .left .panel.collapsible.collapsed>:not(h2){display:none}
+  .console{padding-bottom:calc(7px + env(safe-area-inset-bottom, 0px))}
 }
-/* ---- Größere Touch-Targets auf Fing Geräten ---- */
+/* ---- Immersiver Play-Modus: nur Viewport, sonst nichts ---- */
+body.playing .left,body.playing .right,body.playing .console,body.playing #help{display:none!important}
+body.playing .layout{display:block;overflow:hidden}
+body.playing .viewport-wrap{height:100dvh;min-height:0;position:fixed;inset:0;z-index:10}
+body.playing .topbar{position:fixed;top:0;left:0;right:0;z-index:11;background:#101523cc;backdrop-filter:blur(6px)}
+body.playing .vp-toolbar{top:calc(64px + env(safe-area-inset-top, 0px))}
+body.playing{overflow:hidden}
+/* ---- Größere Touch-Targets auf Fing Geräten + iOS-Fixes ---- */
+#viewport,#viewport canvas{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 @media(pointer:coarse){
   button{min-height:44px;font-size:15px}
+  input,select,textarea{font-size:16px}
   .hierarchy .item{padding:10px}
   .tabs button{min-height:48px}
   .grid2 button{min-height:48px}

@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { TransformControls } from 'three/addons/controls/TransformControls.js'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+// TransformControls + GLTFLoader werden per dynamic import() geladen,
+// damit sie eigene Chunks bekommen und nicht im Start-Bundle landen.
 import { sound } from './sound.js'
 import { t } from './i18n.js'
 
@@ -31,7 +31,7 @@ export class Studio {
     this.objects = []
     this.selected = null
     this.playing = false
-    this.renderer = new THREE.WebGLRenderer({ antialias: true })
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFShadowMap
@@ -62,9 +62,42 @@ export class Studio {
     this.grid.position.y = 0.02
     this.scene.add(this.grid)
 
-    this.tc = new TransformControls(this.camera, this.renderer.domElement)
-    this.tc.setSize(0.9)
-    this.scene.add(this.tc.getHelper ? this.tc.getHelper() : this.tc)
+    // TransformControls kommt per Lazy-Chunk; die Fassade puffert Aufrufe
+    // und Listener, bis das echte Gizmo bereit ist (siehe this.tcReady).
+    this._tcReal = null
+    this._tcCalls = []
+    this._tcListeners = []
+    const selfTc = this
+    const tcCall = (method, arg) => {
+      if (selfTc._tcReal) selfTc._tcReal[method](arg)
+      else selfTc._tcCalls.push([method, arg])
+    }
+    this.tc = {
+      setMode: m => tcCall('setMode', m),
+      setSize: s => tcCall('setSize', s),
+      setTranslationSnap: v => tcCall('setTranslationSnap', v),
+      setRotationSnap: v => tcCall('setRotationSnap', v),
+      attach: o => tcCall('attach', o),
+      detach: () => tcCall('detach'),
+      addEventListener: (type, fn) => {
+        if (selfTc._tcReal) selfTc._tcReal.addEventListener(type, fn)
+        else selfTc._tcListeners.push([type, fn])
+      },
+      removeEventListener: (type, fn) => { if (selfTc._tcReal) selfTc._tcReal.removeEventListener(type, fn) },
+      dispatchEvent: e => { if (selfTc._tcReal) selfTc._tcReal.dispatchEvent(e) }
+    }
+    this.tcReady = import('three/addons/controls/TransformControls.js').then(m => {
+      const real = new m.TransformControls(selfTc.camera, selfTc.renderer.domElement)
+      real.setSize(0.9)
+      selfTc.scene.add(real.getHelper ? real.getHelper() : real)
+      for (const [type, fn] of selfTc._tcListeners) real.addEventListener(type, fn)
+      selfTc._tcListeners = []
+      for (const [method, arg] of selfTc._tcCalls) real[method](arg)
+      selfTc._tcCalls = []
+      selfTc._tcReal = real
+      if (!selfTc.playing && selfTc.selected) real.attach(selfTc.selected)
+      return real
+    }).catch(err => { selfTc.log('Gizmo konnte nicht geladen werden: ' + err.message); return null })
     this.tc.addEventListener('objectChange', () => this.onChange())
     this.tc.addEventListener('mouseUp', () => this.snapshot())
     // Während Gizmo-Ziehen keine Kamera-Rotation (sonst kämpfen beide um die Maus)
@@ -94,18 +127,25 @@ export class Studio {
     addEventListener('keydown', e => { this.keys[e.code] = true; if (e.code === 'Space' && this.playing) e.preventDefault() })
     addEventListener('keyup', e => { this.keys[e.code] = false })
 
-    // Play-Kamera
+    // Play-Kamera (Distanz per Pinch/Mausrad, Tempo einstellbar)
     this.yaw = Math.PI; this.pitch = 0.35
+    this.camDist = 7.5
+    this.camSpeed = parseFloat(localStorage.getItem('ai-studio-camspeed') || '1') || 1
     let dragging = false, lx = 0, ly = 0
     this.renderer.domElement.addEventListener('pointermove', e => {
-      if (!this.playing) return
+      if (!this.playing || e.pointerType === 'touch') return
       if (e.buttons === 1 || e.buttons === 2) {
         if (!dragging) { dragging = true; lx = e.clientX; ly = e.clientY; return }
-        this.yaw -= (e.clientX - lx) * 0.005
-        this.pitch = Math.max(-0.2, Math.min(1.2, this.pitch + (e.clientY - ly) * 0.004))
+        this.yaw -= (e.clientX - lx) * 0.005 * this.camSpeed
+        this.pitch = Math.max(-0.2, Math.min(1.2, this.pitch + (e.clientY - ly) * 0.004 * this.camSpeed))
         lx = e.clientX; ly = e.clientY
       } else dragging = false
     })
+    this.renderer.domElement.addEventListener('wheel', e => {
+      if (!this.playing) return
+      e.preventDefault()
+      this.setCamDist(this.camDist + Math.sign(e.deltaY) * 0.8)
+    }, { passive: false })
     this.renderer.domElement.addEventListener('contextmenu', e => e.preventDefault())
 
     this.fx = []
@@ -124,12 +164,46 @@ export class Studio {
     this.onToast = null
     this.sceneTitle = 'demo'
     this.isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window
+    this.reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+    this.paused = false
+    this.fps = 0
+    this._fpsAcc = 0; this._fpsN = 0; this._fpsT = 0
+    this._autoLow = false
+    this._wakeLock = null
     this.setQuality('auto')
     this.resize()
     addEventListener('resize', () => this.resize())
+    addEventListener('orientationchange', () => setTimeout(() => this.resize(), 200))
+    // Tab versteckt → Rendern pausieren (Akku), Wake-Lock freigeben
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        this.renderer.setAnimationLoop(null)
+        this._releaseWakeLock()
+      } else if (this.ready) {
+        this._last = performance.now()
+        this.renderer.setAnimationLoop(() => this.frame())
+        if (this.playing) this._requestWakeLock()
+      }
+    })
     this.renderer.setAnimationLoop(() => this.frame())
     this.ready = true
     this.rendererBadge()
+  }
+
+  setCamSpeed(v) {
+    this.camSpeed = Math.max(0.3, Math.min(2, parseFloat(v) || 1))
+    localStorage.setItem('ai-studio-camspeed', String(this.camSpeed))
+  }
+  setCamDist(d) { this.camDist = Math.max(4, Math.min(14, d)) }
+  buzz(pattern) { try { if (this.isTouch && navigator.vibrate) navigator.vibrate(pattern) } catch { /* ignore */ } }
+  async _requestWakeLock() {
+    try {
+      if ('wakeLock' in navigator && !this._wakeLock) this._wakeLock = await navigator.wakeLock.request('screen')
+    } catch { /* Headless / nicht unterstützt */ }
+  }
+  _releaseWakeLock() {
+    try { this._wakeLock?.release?.().catch(() => {}) } catch { /* ignore */ }
+    this._wakeLock = null
   }
 
   rendererBadge() {
@@ -149,14 +223,37 @@ export class Studio {
     this.camera.updateProjectionMatrix()
   }
 
-  setQuality(q) {
+  setQuality(q, opts = {}) {
     this.quality = q
-    const low = q === 'low' || (q === 'auto' && this.isTouch)
+    const manualLow = q === 'low'
+    const low = manualLow || (q === 'auto' && (this.isTouch || this._autoLow))
     this.renderer.setPixelRatio(low ? 1 : Math.min(devicePixelRatio, 2))
     this.renderer.shadowMap.enabled = !low
     this.sun.castShadow = !low
+    const mapSize = low ? 1024 : 2048
+    if (this.sun.shadow.mapSize.x !== mapSize) {
+      this.sun.shadow.mapSize.set(mapSize, mapSize)
+      if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); this.sun.shadow.map = null }
+    }
+    if (!opts.silent) { this._autoLow = manualLow ? this._autoLow : this._autoLow }
     this.scene.traverse(o => { if (o.material) o.material.needsUpdate = true })
     this.resize()
+  }
+
+  // FPS-Wächter: fällt die Rate im Auto-Modus ein, wird leise gedrosselt
+  _watchFps(dt) {
+    this._fpsAcc += dt; this._fpsN++; this._fpsT += dt
+    if (this._fpsT >= 2) {
+      this.fps = Math.round(this._fpsN / this._fpsAcc)
+      this._fpsAcc = 0; this._fpsN = 0; this._fpsT = 0
+      const el = document.getElementById('renderer-badge')
+      if (el && el.dataset.fps === '1') el.textContent = `Renderer · ${this.fps} fps`
+      if (this.quality === 'auto' && !this._autoLow && this.fps > 0 && this.fps < 28 && this._elapsed > 5) {
+        this._autoLow = true
+        this.setQuality('auto')
+        this.log('Auto-Qualität: gedrosselt (schwaches Gerät).')
+      }
+    }
   }
 
   setSky(name) {
@@ -566,18 +663,35 @@ export class Studio {
     this.enemiesLeft = this.ofType('enemy').length
     this.yaw = Math.PI; this.pitch = 0.35
     this.over = null
+    this.paused = false
     try { this.userTick = new Function('api', 'dt', 'objs', 'THREE', this.userCode) } catch (err) { this.log('Code-Fehler: ' + err.message); this.userTick = null }
     this.hideOverlay()
     this.toast(this.coop ? '👥 Co-op: P1 WASD+Space · P2 Pfeile+Enter' : null)
+    document.body.classList.add('playing')
     document.getElementById('mode-badge').textContent = 'PLAY'
     document.getElementById('mode-badge').classList.add('play')
+    this._requestWakeLock()
+    this.resize()
     this.log(this.coop ? 'Co-op läuft — P1: WASD+Space, P2: Pfeiltasten+Enter.' : 'Spiel läuft — WASD + Leertaste, Klicken = Schießen.')
     return true
   }
 
+  togglePause() {
+    if (!this.playing || this.over) return false
+    this.paused = !this.paused
+    const btn = document.getElementById('btn-pause')
+    if (btn) { btn.textContent = this.paused ? '▶' : '⏸'; btn.classList.toggle('active', this.paused) }
+    this.toast(this.paused ? t('paused') : null)
+    if (!this.paused) this._last = performance.now()
+    return this.paused
+  }
+
   stop() {
     this.playing = false
+    this.paused = false
     this.orbit.enabled = true
+    this._releaseWakeLock()
+    document.body.classList.remove('playing')
     for (const p of this.players || []) this.scene.remove(p.mesh)
     this.players = []
     this.avatar = null
@@ -602,11 +716,12 @@ export class Studio {
     mesh.position.copy(origin.position).add(new THREE.Vector3(0, 1.3, 0)).addScaledVector(dir, 0.8)
     this.scene.add(mesh)
     this.shots.push({ mesh, vel: dir.multiplyScalar(26), life: 1.6 })
-    sound.shoot()
+    sound.shoot(); this.buzz(8)
   }
 
   spawnFX(pos, color = '#ffd94d') {
-    for (let i = 0; i < 10; i++) {
+    const n = this.reducedMotion ? 4 : 10
+    for (let i = 0; i < n; i++) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.12), new THREE.MeshBasicMaterial({ color }))
       m.position.copy(pos)
       this.scene.add(m)
@@ -698,14 +813,14 @@ export class Studio {
     this.spawnFX(focus, won ? '#37d67a' : '#ff5d5d')
     let extra = ''
     if (won) {
-      sound.win()
+      sound.win(); this.buzz([20, 40, 20, 40, 60])
       const rec = { score: this.score, time: Math.round(this.time * 10) / 10, date: new Date().toISOString().slice(0, 10) }
       const prev = this.getBest()
       if (!prev || rec.score > prev.score || (rec.score === prev.score && rec.time < prev.time)) {
         localStorage.setItem(this.bestKey(), JSON.stringify(rec))
         extra = ` 🏅 ${t('best')}!`
       } else extra = ` (${t('best')}: ${prev.score} P, ${prev.time}s)`
-    } else sound.lose()
+    } else { sound.lose(); this.buzz([60, 40, 60]) }
     const def = won ? `Zeit: ${this.time.toFixed(1)}s, ${this.score} Punkte!${extra}` : t('try_again')
     this.showOverlay(won ? t('won') : t('lost'), (text || def))
     this.updateHUD()
@@ -717,12 +832,14 @@ export class Studio {
     const dt = Math.min((now - this._last) / 1000, 0.05)
     this._last = now
     this._elapsed += dt
+    this._watchFps(dt)
     // Deko-Animation (immer)
     const t = this._elapsed
+    const bob = this.reducedMotion ? 0 : 1
     for (const o of this.objects) {
-      if (o.userData.gameType === 'collectible' || o.userData.gameType === 'powerup') { o.rotation.y += dt * 2.2; o.position.y = o.userData.basePos?.[1] ? o.userData.basePos[1] + Math.sin(t * 3 + o.userData.phase) * 0.12 : o.position.y }
+      if (o.userData.gameType === 'collectible' || o.userData.gameType === 'powerup') { o.rotation.y += dt * 2.2; o.position.y = o.userData.basePos?.[1] ? o.userData.basePos[1] + Math.sin(t * 3 + o.userData.phase) * 0.12 * bob : o.position.y }
       if (o.userData.ring) o.userData.ring.rotation.z += dt * 0.8
-      if (o.userData.pulseMat) o.userData.pulseMat.emissiveIntensity = 0.6 + Math.sin(t * 5 + o.userData.phase) * 0.4
+      if (o.userData.pulseMat && !this.reducedMotion) o.userData.pulseMat.emissiveIntensity = 0.6 + Math.sin(t * 5 + o.userData.phase) * 0.4
       if (!this.playing && o.userData.gameType === 'enemy') {
         if (o.userData.behavior === 'fly') {
           o.position.y = (o.userData.basePos[1] ?? 3) + Math.sin(t * 2 + o.userData.phase) * 0.3
@@ -732,7 +849,7 @@ export class Studio {
         }
       }
     }
-    if (this.playing && !this.over) this.tickPlay(dt)
+    if (this.playing && !this.over && !this.paused) this.tickPlay(dt)
     if (this.playing) {
       for (const f of [...this.fx]) {
         f.life -= dt; f.vel.y -= 12 * dt
@@ -812,7 +929,7 @@ export class Studio {
           p.mesh.position.set(sp0 ? sp0.position.x : 0, 2, sp0 ? sp0.position.z : 8)
           p.vel.set(0, 0, 0); p.invuln = 2
           this.log(`Abgrund! Noch ${this.lives} Leben.`)
-          sound.hit()
+          sound.hit(); this.buzz([25, 40, 25])
         } else { this.finish(false, 'Abgrund!'); return }
       }
       p.moved = p.moved || dir.lengthSq() > 0
@@ -843,7 +960,7 @@ export class Studio {
           this.lives--; p.invuln = 1.2
           this.spawnFX(head, '#ff5d5d')
           this.log(`Aua! Noch ${this.lives} Leben.`)
-          sound.hit()
+          sound.hit(); this.buzz([25, 40, 25])
           if (this.lives <= 0) { this.finish(false, 'Keine Leben mehr!'); return }
         }
       }
@@ -858,7 +975,7 @@ export class Studio {
           this.lives--; p.invuln = 1.2
           this.spawnFX(pp.clone().add(new THREE.Vector3(0, 1, 0)), '#ff5d5d')
           this.log(`Aua! Noch ${this.lives} Leben.`)
-          sound.hit()
+          sound.hit(); this.buzz([25, 40, 25])
           if (this.lives <= 0) { this.finish(false, 'Keine Leben mehr!'); return }
         }
       }
@@ -885,7 +1002,7 @@ export class Studio {
           this.scene.remove(c); this.objects = this.objects.filter(o => o !== c)
           this.coinsLeft--; this.score++
           this.log(`Münze! (${this.score}/${this.coinsTotal})`)
-          sound.coin()
+          sound.coin(); this.buzz(12)
           break
         }
       }
@@ -899,7 +1016,7 @@ export class Studio {
           this.scene.remove(u); this.objects = this.objects.filter(o => o !== u)
           this.lives = Math.min(5, this.lives + 1); this.score++
           this.log(`❤️ +1 Leben! (${this.lives})`)
-          sound.coin()
+          sound.coin(); this.buzz(12)
           break
         }
       }
@@ -916,7 +1033,7 @@ export class Studio {
           this.scene.remove(e); this.objects = this.objects.filter(o => o !== e)
           this.enemiesLeft--; this.score += 2; hit = true
           this.log('Treffer! +2 Punkte.')
-          sound.hit()
+          sound.hit(); this.buzz([25, 40, 25])
           break
         }
       }
@@ -950,7 +1067,7 @@ export class Studio {
     mid.divideScalar(this.players.length)
     let spread = 0
     for (const p of this.players) spread = Math.max(spread, mid.distanceTo(p.mesh.position))
-    const cd = 7.5 + spread * 0.7
+    const cd = this.camDist + spread * 0.7
     const cx = mid.x - Math.sin(this.yaw) * Math.cos(this.pitch) * cd
     const cz = mid.z - Math.cos(this.yaw) * Math.cos(this.pitch) * cd
     const cy = mid.y + 2 + Math.sin(this.pitch) * cd
@@ -961,6 +1078,7 @@ export class Studio {
 
   async loadGLB(file) {
     const buf = await file.arrayBuffer()
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js')
     const loader = new GLTFLoader()
     const gltf = await new Promise((res, rej) => loader.parse(buf, '', res, rej))
     const root = gltf.scene || gltf.scenes?.[0]

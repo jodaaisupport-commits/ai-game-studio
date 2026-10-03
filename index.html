@@ -7,7 +7,10 @@
 <meta name="description" content="AI 3D Game Studio — 3D-Spiele bauen, spielen und remixen, mit KI." />
 <title>AI 3D Game Studio</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◈</text></svg>" />
-<link rel="apple-touch-icon" href="/icon.svg" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="apple-touch-icon" href="/icon-180.png" />
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="stylesheet" href="/src/style.css" />
 </head>
@@ -17,6 +20,8 @@
   <div class="top-actions">
     <button id="btn-play" class="primary" data-i18n="play">▶ Spielen</button>
     <button id="btn-stop" disabled data-i18n="stop">■ Stop</button>
+    <button id="btn-menu" class="only-mobile" aria-label="Menü" title="Menü">☰</button>
+    <div class="more" id="top-more">
     <span class="sep"></span>
     <button id="btn-undo" data-i18n="undo" title="Strg+Z">↩ Rückgängig</button>
     <button id="btn-redo" data-i18n="redo" title="Strg+Y">↪ Wiederholen</button>
@@ -30,6 +35,8 @@
     <span class="sep"></span>
     <button id="btn-sound" title="Sound an/aus">🔊</button>
     <button id="btn-lang" title="Sprache / Language">EN</button>
+    <button id="btn-install" class="hidden" data-i18n="install" title="App installieren">📲 Installieren</button>
+    </div>
   </div>
 </header>
 
@@ -96,6 +103,9 @@
           <option value="low" data-i18n="q_low">Niedrig</option>
         </select>
       </label>
+      <label><span data-i18n="cam_speed">Kamera-Tempo</span>
+        <input id="rng-cam" type="range" min="0.3" max="2" step="0.1" value="1" />
+      </label>
     </section>
   </aside>
 
@@ -103,6 +113,7 @@
     <div id="viewport"></div>
     <div class="vp-toolbar">
       <span id="mode-badge" class="mode">EDIT</span>
+      <button id="btn-pause" class="hud-btn hidden" data-i18n-title="pause" title="Pause">⏸</button>
       <span id="hud" class="hud">Punkte 0 · Leben 3 · Zeit 0:00</span>
       <span id="renderer-badge" class="renderbadge">…</span>
     </div>
@@ -112,6 +123,7 @@
       <button id="btn-again" data-i18n="again">Nochmal spielen</button></div>
     </div>
     <div id="touch-ui" class="touch-ui hidden">
+      <div id="stick-zone" class="stick-zone"></div>
       <div id="stick" class="stick"><div id="stick-knob" class="stick-knob"></div></div>
       <div class="touch-btns">
         <button id="tbtn-shoot" data-i18n="touch_shoot">◎</button>
